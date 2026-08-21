@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../config/supabaseClient';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatPercent, formatPercent3 } from '../utils/formatters';
+import { AttributeDashboard } from './AttributeDashboard';
 import './TrendsDashboard.css';
 
 export const TrendsDashboard = () => {
+  const [activeTab, setActiveTab] = useState('time'); // 'time' or 'attribute'
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,19 +15,42 @@ export const TrendsDashboard = () => {
   const [selectedPlatform, setSelectedPlatform] = useState('combined');
   
   const [selectedMonthTable, setSelectedMonthTable] = useState('');
+  
+  const [materialCategory, setMaterialCategory] = useState('All');
+  const [materialMonth, setMaterialMonth] = useState('');
+  
   const [sortConfig, setSortConfig] = useState({ key: 'pdp_to_cart_rate', direction: 'desc' });
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const { data: metricsData, error: dbError } = await supabase
-          .from('category_metrics')
-          .select('*')
-          .order('upload_date', { ascending: true });
+        let allData = [];
+        let hasMore = true;
+        let start = 0;
+        const PAGE_SIZE = 1000;
+        
+        while (hasMore) {
+          const { data: metricsData, error: dbError } = await supabase
+            .from('category_material_metrics')
+            .select('*')
+            .order('upload_date', { ascending: true })
+            .range(start, start + PAGE_SIZE - 1);
+            
+          if (dbError) throw dbError;
           
-        if (dbError) throw dbError;
-        setData(metricsData || []);
+          if (metricsData && metricsData.length > 0) {
+            allData = [...allData, ...metricsData];
+            start += PAGE_SIZE;
+            if (metricsData.length < PAGE_SIZE) {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
+        }
+        
+        setData(allData);
       } catch (err) {
         console.error(err);
         setError('Failed to fetch data from Supabase. Make sure the table exists and credentials are correct.');
@@ -49,10 +74,6 @@ export const TrendsDashboard = () => {
     if (selectedCategory !== 'All') {
       filtered = filtered.filter(d => d.category === selectedCategory);
     }
-    
-    // Group by date if 'All' is selected (average the rates, sum the absolute numbers)
-    // For simplicity, if 'All' is selected, we should calculate the weighted averages or just show sums.
-    // Let's create an aggregated view if 'All' is selected, or just group by date.
     
     const byDate = {};
     filtered.forEach(row => {
@@ -79,10 +100,11 @@ export const TrendsDashboard = () => {
       pdp_to_cart_rate: d.views > 0 ? d.cart_adds / d.views : 0,
       overall_conv_rate: d.views > 0 ? d.purchases / d.views : 0,
       fis_intent_rate: d.views > 0 ? d.fis_users / d.views : 0,
-      // For chart display
+      overall_intent_rate: d.views > 0 ? (d.cart_adds + d.fis_users) / d.views : 0,
       pdp_to_cart_pct: (d.views > 0 ? d.cart_adds / d.views : 0) * 100,
       purchase_pct: (d.views > 0 ? d.purchases / d.views : 0) * 100,
       fis_intent_pct: (d.views > 0 ? d.fis_users / d.views : 0) * 100,
+      overall_intent_pct: (d.views > 0 ? (d.cart_adds + d.fis_users) / d.views : 0) * 100,
     })).sort((a, b) => new Date(a.upload_date) - new Date(b.upload_date));
     
   }, [data, selectedCategory, selectedPlatform]);
@@ -93,6 +115,7 @@ export const TrendsDashboard = () => {
   }, [data]);
 
   const activeMonthTable = selectedMonthTable || (months.length > 0 ? months[0] : '');
+  const activeMaterialMonth = materialMonth || (months.length > 0 ? months[0] : '');
 
   const monthlyCategoryData = useMemo(() => {
     if (!activeMonthTable) return [];
@@ -103,11 +126,36 @@ export const TrendsDashboard = () => {
       d.category !== 'All'
     );
     
-    return filtered.sort((a, b) => {
+    const byCategory = {};
+    filtered.forEach(row => {
+      if (!byCategory[row.category]) {
+        byCategory[row.category] = {
+          category: row.category,
+          views: 0,
+          cart_adds: 0,
+          purchases: 0,
+          fis_users: 0,
+        };
+      }
+      const c = byCategory[row.category];
+      c.views += row.views || 0;
+      c.cart_adds += row.cart_adds || 0;
+      c.purchases += row.purchases || 0;
+      c.fis_users += row.fis_users || 0;
+    });
+
+    const aggregated = Object.values(byCategory).map(c => ({
+      ...c,
+      pdp_to_cart_rate: c.views > 0 ? c.cart_adds / c.views : 0,
+      overall_conv_rate: c.views > 0 ? c.purchases / c.views : 0,
+      fis_intent_rate: c.views > 0 ? c.fis_users / c.views : 0,
+      overall_intent_rate: c.views > 0 ? (c.cart_adds + c.fis_users) / c.views : 0
+    }));
+    
+    return aggregated.sort((a, b) => {
       let aVal = a[sortConfig.key] || 0;
       let bVal = b[sortConfig.key] || 0;
       
-      // If we are sorting by string (e.g. category)
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         return sortConfig.direction === 'asc' 
           ? aVal.localeCompare(bVal) 
@@ -119,6 +167,92 @@ export const TrendsDashboard = () => {
       return 0;
     });
   }, [data, activeMonthTable, selectedPlatform, sortConfig]);
+
+  const monthlyCategoryTotals = useMemo(() => {
+    const totals = {
+      views: 0,
+      cart_adds: 0,
+      purchases: 0,
+      fis_users: 0,
+    };
+    monthlyCategoryData.forEach(row => {
+      totals.views += row.views || 0;
+      totals.cart_adds += row.cart_adds || 0;
+      totals.purchases += row.purchases || 0;
+      totals.fis_users += row.fis_users || 0;
+    });
+    return {
+      ...totals,
+      pdp_to_cart_rate: totals.views > 0 ? totals.cart_adds / totals.views : 0,
+      overall_conv_rate: totals.views > 0 ? totals.purchases / totals.views : 0,
+      fis_intent_rate: totals.views > 0 ? totals.fis_users / totals.views : 0,
+      overall_intent_rate: totals.views > 0 ? (totals.cart_adds + totals.fis_users) / totals.views : 0,
+    };
+  }, [monthlyCategoryData]);
+
+  const monthlyMaterialData = useMemo(() => {
+    if (!activeMaterialMonth) return [];
+    
+    let filtered = data.filter(d => 
+      d.upload_date === activeMaterialMonth && 
+      d.platform === selectedPlatform
+    );
+    
+    if (materialCategory !== 'All') {
+      filtered = filtered.filter(d => d.category === materialCategory);
+    }
+    
+    const byMaterial = {};
+    filtered.forEach(row => {
+      const mat = row.material_type || 'Other/Unspecified';
+      if (!byMaterial[mat]) {
+        byMaterial[mat] = {
+          material_type: mat,
+          views: 0,
+          cart_adds: 0,
+          purchases: 0,
+          fis_users: 0,
+        };
+      }
+      const c = byMaterial[mat];
+      c.views += row.views || 0;
+      c.cart_adds += row.cart_adds || 0;
+      c.purchases += row.purchases || 0;
+      c.fis_users += row.fis_users || 0;
+    });
+
+    const aggregated = Object.values(byMaterial).map(c => ({
+      ...c,
+      pdp_to_cart_rate: c.views > 0 ? c.cart_adds / c.views : 0,
+      overall_conv_rate: c.views > 0 ? c.purchases / c.views : 0,
+      fis_intent_rate: c.views > 0 ? c.fis_users / c.views : 0,
+      overall_intent_rate: c.views > 0 ? (c.cart_adds + c.fis_users) / c.views : 0
+    }));
+    
+    return aggregated.sort((a, b) => b.views - a.views);
+  }, [data, activeMaterialMonth, selectedPlatform, materialCategory]);
+
+  const monthlyMaterialTotals = useMemo(() => {
+    const totals = {
+      views: 0,
+      cart_adds: 0,
+      purchases: 0,
+      fis_users: 0,
+    };
+    monthlyMaterialData.forEach(row => {
+      totals.views += row.views || 0;
+      totals.cart_adds += row.cart_adds || 0;
+      totals.purchases += row.purchases || 0;
+      totals.fis_users += row.fis_users || 0;
+    });
+    return {
+      ...totals,
+      pdp_to_cart_rate: totals.views > 0 ? totals.cart_adds / totals.views : 0,
+      overall_conv_rate: totals.views > 0 ? totals.purchases / totals.views : 0,
+      fis_intent_rate: totals.views > 0 ? totals.fis_users / totals.views : 0,
+      overall_intent_rate: totals.views > 0 ? (totals.cart_adds + totals.fis_users) / totals.views : 0,
+    };
+  }, [monthlyMaterialData]);
 
   const requestSort = (key) => {
     let direction = 'desc';
@@ -135,20 +269,36 @@ export const TrendsDashboard = () => {
     return '';
   };
 
-  if (loading) {
-    return <div className="trends-loading"><div className="spinner"></div> Loading Trends Data...</div>;
-  }
-
-  if (error) {
-    return <div className="trends-error">{error}</div>;
-  }
-
   return (
     <div className="trends-container">
       <div className="trends-header">
-        <h2>Historical Trends Dashboard</h2>
-        
-        <div className="trends-filters">
+        <h2>Analytics Dashboard</h2>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <button 
+                onClick={() => setActiveTab('time')} 
+                style={{ padding: '0.5rem 1rem', background: activeTab === 'time' ? '#3b82f6' : '#333', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}
+            >
+                Historical Trends
+            </button>
+            <button 
+                onClick={() => setActiveTab('attribute')} 
+                style={{ padding: '0.5rem 1rem', background: activeTab === 'attribute' ? '#3b82f6' : '#333', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}
+            >
+                Attribute Breakdown
+            </button>
+        </div>
+      </div>
+      
+      {activeTab === 'attribute' ? (
+          <AttributeDashboard />
+      ) : (
+          <>
+            {loading && <div className="trends-loading"><div className="spinner"></div> Loading Trends Data...</div>}
+            {error && <div className="trends-error">{error}</div>}
+            
+            {!loading && !error && (
+              <>
+                <div className="trends-filters" style={{ marginBottom: '2rem' }}>
           <label>
             <span>Category:</span>
             <select 
@@ -173,7 +323,6 @@ export const TrendsDashboard = () => {
             </select>
           </label>
         </div>
-      </div>
       
       {filteredData.length === 0 ? (
         <div className="no-data">No data available for the selected filters. Please upload data via Admin.</div>
@@ -217,6 +366,7 @@ export const TrendsDashboard = () => {
                     <th>PDP to Cart</th>
                     <th>Purchase %</th>
                     <th>FIS Intent</th>
+                    <th>Total Intent</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,6 +380,7 @@ export const TrendsDashboard = () => {
                       <td>{formatPercent(row.pdp_to_cart_rate)}</td>
                       <td>{formatPercent3(row.overall_conv_rate)}</td>
                       <td>{formatPercent3(row.fis_intent_rate)}</td>
+                      <td>{formatPercent(row.overall_intent_rate)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -266,32 +417,130 @@ export const TrendsDashboard = () => {
                     <th onClick={() => requestSort('pdp_to_cart_rate')} style={{ cursor: 'pointer', userSelect: 'none' }}>PDP to Cart{getSortIndicator('pdp_to_cart_rate')}</th>
                     <th onClick={() => requestSort('overall_conv_rate')} style={{ cursor: 'pointer', userSelect: 'none' }}>Purchase %{getSortIndicator('overall_conv_rate')}</th>
                     <th onClick={() => requestSort('fis_intent_rate')} style={{ cursor: 'pointer', userSelect: 'none' }}>FIS Intent{getSortIndicator('fis_intent_rate')}</th>
+                    <th onClick={() => requestSort('overall_intent_rate')} style={{ cursor: 'pointer', userSelect: 'none' }}>Total Intent{getSortIndicator('overall_intent_rate')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {monthlyCategoryData.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>No category data available for this month.</td>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No category data available for this month.</td>
                     </tr>
                   ) : (
-                    monthlyCategoryData.map((row, idx) => (
-                      <tr key={idx}>
-                        <td>{row.category}</td>
-                        <td>{row.views?.toLocaleString() || '-'}</td>
-                        <td>{row.cart_adds?.toLocaleString() || '-'}</td>
-                        <td>{row.purchases?.toLocaleString() || '-'}</td>
-                        <td>{row.fis_users?.toLocaleString() || '-'}</td>
-                        <td>{formatPercent(row.pdp_to_cart_rate)}</td>
-                        <td>{formatPercent3(row.overall_conv_rate)}</td>
-                        <td>{formatPercent3(row.fis_intent_rate)}</td>
+                    <>
+                      {monthlyCategoryData.map((row, idx) => (
+                        <tr key={idx}>
+                          <td>{row.category}</td>
+                          <td>{row.views?.toLocaleString() || '-'}</td>
+                          <td>{row.cart_adds?.toLocaleString() || '-'}</td>
+                          <td>{row.purchases?.toLocaleString() || '-'}</td>
+                          <td>{row.fis_users?.toLocaleString() || '-'}</td>
+                          <td>{formatPercent(row.pdp_to_cart_rate)}</td>
+                          <td>{formatPercent3(row.overall_conv_rate)}</td>
+                          <td>{formatPercent3(row.fis_intent_rate)}</td>
+                          <td>{formatPercent(row.overall_intent_rate)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ fontWeight: 'bold', background: '#222', borderTop: '2px solid #444' }}>
+                        <td>Total</td>
+                        <td>{monthlyCategoryTotals.views.toLocaleString()}</td>
+                        <td>{monthlyCategoryTotals.cart_adds.toLocaleString()}</td>
+                        <td>{monthlyCategoryTotals.purchases.toLocaleString()}</td>
+                        <td>{monthlyCategoryTotals.fis_users.toLocaleString()}</td>
+                        <td>{formatPercent(monthlyCategoryTotals.pdp_to_cart_rate)}</td>
+                        <td>{formatPercent3(monthlyCategoryTotals.overall_conv_rate)}</td>
+                        <td>{formatPercent3(monthlyCategoryTotals.fis_intent_rate)}</td>
+                        <td>{formatPercent(monthlyCategoryTotals.overall_intent_rate)}</td>
                       </tr>
-                    ))
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="table-card">
+            <div className="trends-header" style={{ marginBottom: '1rem', marginTop: 0 }}>
+              <h3>Material Type Breakdown</h3>
+              <div className="trends-filters" style={{ padding: '0.5rem 1rem', display: 'flex', gap: '1rem' }}>
+                <label>
+                  <span>Month:</span>
+                  <select 
+                    value={activeMaterialMonth} 
+                    onChange={(e) => setMaterialMonth(e.target.value)}
+                    className="trends-select"
+                  >
+                    {months.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Category:</span>
+                  <select 
+                    value={materialCategory} 
+                    onChange={(e) => setMaterialCategory(e.target.value)}
+                    className="trends-select"
+                  >
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
+            
+            <div className="table-wrapper">
+              <table className="trends-table">
+                <thead>
+                  <tr>
+                    <th>Material Type</th>
+                    <th>Views</th>
+                    <th>Cart Adds</th>
+                    <th>Purchases</th>
+                    <th>FIS Users</th>
+                    <th>PDP to Cart</th>
+                    <th>Purchase %</th>
+                    <th>FIS Intent</th>
+                    <th>Total Intent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyMaterialData.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No material type data available.</td>
+                    </tr>
+                  ) : (
+                    <>
+                      {monthlyMaterialData.map((row, idx) => (
+                        <tr key={idx}>
+                          <td>{row.material_type}</td>
+                          <td>{row.views?.toLocaleString() || '-'}</td>
+                          <td>{row.cart_adds?.toLocaleString() || '-'}</td>
+                          <td>{row.purchases?.toLocaleString() || '-'}</td>
+                          <td>{row.fis_users?.toLocaleString() || '-'}</td>
+                          <td>{formatPercent(row.pdp_to_cart_rate)}</td>
+                          <td>{formatPercent3(row.overall_conv_rate)}</td>
+                          <td>{formatPercent3(row.fis_intent_rate)}</td>
+                          <td>{formatPercent(row.overall_intent_rate)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ fontWeight: 'bold', background: '#222', borderTop: '2px solid #444' }}>
+                        <td>Total</td>
+                        <td>{monthlyMaterialTotals.views.toLocaleString()}</td>
+                        <td>{monthlyMaterialTotals.cart_adds.toLocaleString()}</td>
+                        <td>{monthlyMaterialTotals.purchases.toLocaleString()}</td>
+                        <td>{monthlyMaterialTotals.fis_users.toLocaleString()}</td>
+                        <td>{formatPercent(monthlyMaterialTotals.pdp_to_cart_rate)}</td>
+                        <td>{formatPercent3(monthlyMaterialTotals.overall_conv_rate)}</td>
+                        <td>{formatPercent3(monthlyMaterialTotals.fis_intent_rate)}</td>
+                        <td>{formatPercent(monthlyMaterialTotals.overall_intent_rate)}</td>
+                      </tr>
+                    </>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
         </>
+      )}
+      </>
+      )}
+      </>
       )}
     </div>
   );
