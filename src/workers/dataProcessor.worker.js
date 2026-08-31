@@ -6,10 +6,22 @@ const normalizeName = (name) => {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 };
 
-const mapCategory = (rawCategory) => {
+const mapCategory = (rawCategory, productName = '') => {
   if (!rawCategory) return 'Unmapped';
   const normalized = rawCategory.trim().toLowerCase().replace(/\s+/g, ' ');
-  return categoryMapping[normalized] || 'Unmapped';
+  let mapped = categoryMapping[normalized] || 'Unmapped';
+  
+  if (productName && (mapped === 'Coin' || mapped === 'Unmapped')) {
+    const lowerName = productName.toLowerCase();
+    if (lowerName.includes('earring')) mapped = 'Earrings';
+    else if (lowerName.includes('necklace')) mapped = 'Necklace';
+    else if (lowerName.includes('pendant')) mapped = 'Pendant';
+    else if (lowerName.includes('ring') && !lowerName.includes('earring')) mapped = 'Ring';
+    else if (lowerName.includes('bangle')) mapped = 'Bangle';
+    else if (lowerName.includes('bracelet')) mapped = 'Bracelet';
+  }
+  
+  return mapped;
 };
 
 const parseCSV = (file) => {
@@ -45,7 +57,7 @@ const aggregateData = (data, isWeb) => {
       aggregated[normName] = {
         productName: rawName,
         normalizedName: normName,
-        category: mapCategory(row['Category']),
+        category: mapCategory(row['Category'], rawName),
         priceRange: isWeb ? row['Price Range'] : null,
         views: 0,
         cartAdds: 0,

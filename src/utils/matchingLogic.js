@@ -63,9 +63,21 @@ const normalize = (str) => {
     return String(str).trim().toLowerCase().replace(/\s+/g, ' ');
 };
 
-const getMappedCategory = (rawCat) => {
+const getMappedCategory = (rawCat, productName = '') => {
     const norm = normalize(rawCat);
-    return normalize(categoryMapping[norm] || rawCat);
+    let mapped = normalize(categoryMapping[norm] || rawCat);
+    
+    if (productName && (mapped === 'coin' || mapped === 'unmapped' || mapped === '')) {
+        const lowerName = productName.toLowerCase();
+        if (lowerName.includes('earring')) mapped = 'earrings';
+        else if (lowerName.includes('necklace')) mapped = 'necklace';
+        else if (lowerName.includes('pendant')) mapped = 'pendant';
+        else if (lowerName.includes('ring') && !lowerName.includes('earring')) mapped = 'ring';
+        else if (lowerName.includes('bangle')) mapped = 'bangle';
+        else if (lowerName.includes('bracelet')) mapped = 'bracelet';
+    }
+    
+    return mapped;
 };
 
 /**
@@ -133,7 +145,7 @@ export async function processNewMatches(products) {
     for (const rawId of unmatchedIdentifiers) {
         const normId = normalize(rawId);
         const rawCat = uniqueMap.get(rawId);
-        const mappedProdCat = getMappedCategory(rawCat);
+        const mappedProdCat = getMappedCategory(rawCat, rawId);
         
         let bestMatch = null;
         let bestTier = 'Unmatched';

@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../config/supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatPercent, formatPercent3 } from '../utils/formatters';
+import { exportToCSV } from '../utils/exportUtils';
+
+const getAttributeColumns = (attributeName) => [
+    { header: attributeName, accessor: 'attributeValue' },
+    { header: 'Views', accessor: 'views' },
+    { header: 'Cart Adds', accessor: 'cart_adds' },
+    { header: 'FIS Users', accessor: 'fis_users' },
+    { header: 'PDP to Cart', accessor: row => formatPercent(row.pdp_to_cart_rate) },
+    { header: 'FIS Intent', accessor: row => formatPercent3(row.fis_intent_rate) },
+    { header: 'Total Intent', accessor: row => formatPercent(row.overall_intent_rate) }
+];
 
 export const AttributeDashboard = () => {
     const [loadingFilters, setLoadingFilters] = useState(true);
@@ -172,7 +183,15 @@ export const AttributeDashboard = () => {
                     </div>
 
                     <div className="table-card">
-                        <h3>Detailed Breakdown</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ margin: 0 }}>Detailed Breakdown</h3>
+                            <button 
+                                onClick={() => exportToCSV(analysisData.tableData, getAttributeColumns(selectedAttribute), `attribute_breakdown_${selectedAttribute}.csv`)}
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.9rem', cursor: 'pointer', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px' }}
+                            >
+                                Download CSV
+                            </button>
+                        </div>
                         <div className="table-wrapper">
                             <table className="trends-table">
                                 <thead>
