@@ -57,12 +57,9 @@ BEGIN
       FROM product_metrics pm
       WHERE pm.upload_date >= $1 AND pm.upload_date <= $2 ';
 
-    IF p_platform != 'combined' THEN
-        v_sql := v_sql || ' AND pm.platform = $3 ';
-    ELSE
-        -- Just to keep parameter indexes aligned, we pass it but ignore it
-        v_sql := v_sql || ' AND ($3 = $3) ';
-    END IF;
+    -- 'combined' is actually a pre-aggregated value in product_metrics
+    -- so we should always filter by it to avoid double-counting (app + web + combined)
+    v_sql := v_sql || ' AND pm.platform = $3 ';
 
     IF p_category = 'Uncategorized' THEN
         v_sql := v_sql || ' AND (pm.category = ''N/A'' OR pm.category IS NULL) ';

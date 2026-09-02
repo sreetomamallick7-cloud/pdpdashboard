@@ -52,7 +52,7 @@ WITH aggregated AS (
   WHERE (p_category = 'All' 
          OR (p_category = 'Uncategorized' AND (pm.category = 'N/A' OR pm.category IS NULL))
          OR (p_category != 'Uncategorized' AND pm.category = p_category))
-    AND (p_platform = 'combined' OR pm.platform = p_platform)
+    AND pm.platform = p_platform
     AND pm.upload_date >= p_start_date AND pm.upload_date <= p_end_date
   GROUP BY pm.product_identifier
 ),

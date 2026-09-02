@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import { formatPercent } from '../utils/formatters';
+import { exportToCSV } from '../utils/exportUtils';
 import './CategoryDrillDownPage.css';
 
 export const CategoryDrillDownPage = () => {
@@ -23,7 +24,6 @@ export const CategoryDrillDownPage = () => {
   // Sorting states for different tables
   const [sortConfigL2, setSortConfigL2] = useState({ key: 'views', direction: 'desc' });
   const [sortConfigUnderexposedCart, setSortConfigUnderexposedCart] = useState({ key: 'opp_score_cart', direction: 'desc' });
-  const [sortConfigWastedCart, setSortConfigWastedCart] = useState({ key: 'opp_score_cart', direction: 'asc' });
   const [sortConfigUnderexposedFis, setSortConfigUnderexposedFis] = useState({ key: 'opp_score_fis', direction: 'desc' });
   const [sortConfigWastedFis, setSortConfigWastedFis] = useState({ key: 'opp_score_fis', direction: 'asc' });
 
@@ -68,7 +68,13 @@ export const CategoryDrillDownPage = () => {
         });
         
         if (dbError) throw dbError;
-        setData(drilldownData || []);
+        
+        const enhancedData = (drilldownData || []).map(row => ({
+          ...row,
+          total_intent: row.views > 0 ? (row.cart_adds + row.fis_users) / row.views : 0
+        }));
+        
+        setData(enhancedData);
       } catch (err) {
         console.error("Error fetching drilldown data:", err);
         setError("Failed to load category drill-down data. Make sure you've run the SQL migration in Supabase.");
@@ -122,11 +128,6 @@ export const CategoryDrillDownPage = () => {
                // Sorting is applied dynamically at render time to allow table column clicks
                ;
   }, [data]);
-  
-  const wastedViewsCart = useMemo(() => {
-    return data.filter(d => d.opp_score_cart && d.opp_score_cart < 0)
-               ;
-  }, [data]);
 
   const underexposedFis = useMemo(() => {
     return data.filter(d => d.opp_score_fis && d.opp_score_fis > 0)
@@ -147,7 +148,6 @@ export const CategoryDrillDownPage = () => {
   }, [activeLayer2, concentrationSummary, sortConfigL2]);
 
   const sortedUnderexposedCart = useMemo(() => applySort(underexposedCart, sortConfigUnderexposedCart).slice(0, 50), [underexposedCart, sortConfigUnderexposedCart]);
-  const sortedWastedViewsCart = useMemo(() => applySort(wastedViewsCart, sortConfigWastedCart).slice(0, 50), [wastedViewsCart, sortConfigWastedCart]);
   const sortedUnderexposedFis = useMemo(() => applySort(underexposedFis, sortConfigUnderexposedFis).slice(0, 50), [underexposedFis, sortConfigUnderexposedFis]);
   const sortedWastedViewsFis = useMemo(() => applySort(wastedViewsFis, sortConfigWastedFis).slice(0, 50), [wastedViewsFis, sortConfigWastedFis]);
 
@@ -212,7 +212,26 @@ export const CategoryDrillDownPage = () => {
                 <div className="drilldown-section layer2-drilldown">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3>Top {activeLayer2 === 'views' ? 'Views' : activeLayer2 === 'cart' ? 'Cart Adds' : 'FIS Users'} Contributors ({concentrationSummary[activeLayer2].skus.length} SKUs)</h3>
-                    <button onClick={() => setActiveLayer2(null)} style={{ padding: '0.2rem 0.5rem', cursor: 'pointer' }}>Close</button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        onClick={() => {
+                          const columns = [
+                            { header: 'Product ID', accessor: row => row.base_sku || row.product_identifier },
+                            { header: 'Product Name', accessor: 'product_name' },
+                            { header: 'Views', accessor: 'views' },
+                            { header: 'Cart Adds', accessor: 'cart_adds' },
+                            { header: 'Purchases', accessor: 'purchases' },
+                            { header: 'FIS Users', accessor: 'fis_users' },
+                            { header: 'Total Intent', accessor: row => formatPercent(row.total_intent) }
+                          ];
+                          exportToCSV(sortedLayer2, columns, `layer2_${activeLayer2}_${category}.csv`);
+                        }}
+                        style={{ padding: '0.2rem 0.5rem', cursor: 'pointer', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px' }}
+                      >
+                        Download CSV
+                      </button>
+                      <button onClick={() => setActiveLayer2(null)} style={{ padding: '0.2rem 0.5rem', cursor: 'pointer' }}>Close</button>
+                    </div>
                   </div>
                   <div className="table-wrapper">
                     <table className="trends-table">
@@ -224,6 +243,7 @@ export const CategoryDrillDownPage = () => {
                           <th onClick={() => handleSort(sortConfigL2, setSortConfigL2, 'cart_adds')} style={{cursor:'pointer', userSelect:'none'}}>Cart Adds{getSortIndicator(sortConfigL2, 'cart_adds')}</th>
                           <th onClick={() => handleSort(sortConfigL2, setSortConfigL2, 'purchases')} style={{cursor:'pointer', userSelect:'none'}}>Purchases{getSortIndicator(sortConfigL2, 'purchases')}</th>
                           <th onClick={() => handleSort(sortConfigL2, setSortConfigL2, 'fis_users')} style={{cursor:'pointer', userSelect:'none'}}>FIS Users{getSortIndicator(sortConfigL2, 'fis_users')}</th>
+                          <th onClick={() => handleSort(sortConfigL2, setSortConfigL2, 'total_intent')} style={{cursor:'pointer', userSelect:'none'}}>Total Intent{getSortIndicator(sortConfigL2, 'total_intent')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -235,6 +255,7 @@ export const CategoryDrillDownPage = () => {
                             <td>{row.cart_adds}</td>
                             <td>{row.purchases}</td>
                             <td>{row.fis_users}</td>
+                            <td>{formatPercent(row.total_intent)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -310,42 +331,7 @@ export const CategoryDrillDownPage = () => {
                 </div>
               </div>
 
-              <div className="drilldown-section">
-                <h3>Wasted Views (Cart)</h3>
-                <p className="section-desc">Seen a lot, doesn't convert well. Investigate PDP/pricing/imagery.</p>
-                <div className="table-wrapper">
-                  <table className="trends-table">
-                    <thead>
-                      <tr>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'base_sku')} style={{cursor:'pointer', userSelect:'none'}}>Product ID{getSortIndicator(sortConfigWastedCart, 'base_sku')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'product_name')} style={{cursor:'pointer', userSelect:'none'}}>Product Name{getSortIndicator(sortConfigWastedCart, 'product_name')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'views')} style={{cursor:'pointer', userSelect:'none'}}>Views{getSortIndicator(sortConfigWastedCart, 'views')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'cart_adds')} style={{cursor:'pointer', userSelect:'none'}}>Cart Adds{getSortIndicator(sortConfigWastedCart, 'cart_adds')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'fis_users')} style={{cursor:'pointer', userSelect:'none'}}>FIS Users{getSortIndicator(sortConfigWastedCart, 'fis_users')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'wilson_cart_rate')} style={{cursor:'pointer', userSelect:'none'}}>Wilson Adj. Rate{getSortIndicator(sortConfigWastedCart, 'wilson_cart_rate')}</th>
-                        <th onClick={() => handleSort(sortConfigWastedCart, setSortConfigWastedCart, 'opp_score_cart')} style={{cursor:'pointer', userSelect:'none'}}>Opp Score{getSortIndicator(sortConfigWastedCart, 'opp_score_cart')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedWastedViewsCart.map(row => (
-                        <tr key={row.product_identifier}>
-                          <td>{row.base_sku || row.product_identifier}</td>
-                          <td>{row.product_name || 'Unknown'}</td>
-                          <td>{row.views}</td>
-                          <td>{row.cart_adds}</td>
-                          <td>{row.fis_users}</td>
-                          <td>{formatPercent(row.wilson_cart_rate)}</td>
-                          <td style={{color: '#ef4444'}}>{formatPercent(row.opp_score_cart)}</td>
-                        </tr>
-                      ))}
-                      {wastedViewsCart.length === 0 && (
-                        <tr><td colSpan="7" style={{textAlign: 'center'}}>No significant wasted views found.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            
+
               <div className="drilldown-section">
                 <h3>Underexposed Opportunities (FIS)</h3>
                 <p className="section-desc">High FIS conversion, barely seen. Push visibility.</p>
