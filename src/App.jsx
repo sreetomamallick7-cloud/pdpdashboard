@@ -4,6 +4,7 @@ import { DashboardLayout } from './components/DashboardLayout';
 import { Navigation } from './components/Navigation';
 import { AdminUpload } from './components/AdminUpload';
 import { TrendsDashboard } from './components/TrendsDashboard';
+import { WeeklyTrendsDashboard } from './components/WeeklyTrendsDashboard';
 import { CategoryDrillDownPage } from './components/CategoryDrillDownPage';
 import './index.css';
 
@@ -21,6 +22,7 @@ function App() {
                 <Route path="/" element={<DashboardLayout />} />
                 <Route path="/admin" element={<AdminUpload />} />
                 <Route path="/trends" element={<TrendsDashboard />} />
+                <Route path="/weekly-trends" element={<WeeklyTrendsDashboard />} />
               </Routes>
             </div>
           </div>

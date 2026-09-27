@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, UploadCloud } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, UploadCloud, BarChart2 } from 'lucide-react';
 import './Navigation.css'; // Let's create some simple styling
 
 export const Navigation = () => {
@@ -23,6 +23,13 @@ export const Navigation = () => {
         >
           <TrendingUp size={20} />
           <span>Trends Dashboard</span>
+        </NavLink>
+        <NavLink 
+          to="/weekly-trends" 
+          className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+        >
+          <BarChart2 size={20} />
+          <span>Weekly Trends</span>
         </NavLink>
         <NavLink 
           to="/admin" 

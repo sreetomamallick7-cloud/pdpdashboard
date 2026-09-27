@@ -9,10 +9,11 @@ import './AdminUpload.css';
 
 export const AdminUpload = () => {
   const { files, handleFileUpload } = useDashboardData();
-  const [activeTab, setActiveTab] = useState('engagement'); // 'engagement' or 'attributes'
+  const [activeTab, setActiveTab] = useState('engagement'); // 'engagement', 'attributes', or 'weekly'
   
-  // Engagement state
+  // Engagement / Weekly state
   const [uploadDate, setUploadDate] = useState('');
+  const [weekLabel, setWeekLabel] = useState(''); // E.g. "1-7th July"
   
   // Attributes state
   const [attrFile, setAttrFile] = useState(null);
@@ -21,10 +22,15 @@ export const AdminUpload = () => {
   const [uploadStatus, setUploadStatus] = useState(null); // 'success', 'error', 'uploading'
   const [statusMessage, setStatusMessage] = useState('');
 
-  const handleProcessAndPush = async () => {
+  const handleProcessAndPush = async (isWeekly = false) => {
     if (!uploadDate) {
       setUploadStatus('error');
-      setStatusMessage('Please select a Period Date before uploading.');
+      setStatusMessage('Please select a Date before uploading.');
+      return;
+    }
+    if (isWeekly && !weekLabel) {
+      setUploadStatus('error');
+      setStatusMessage('Please enter a Week Label (e.g. 1-7th July).');
       return;
     }
 
@@ -77,6 +83,33 @@ export const AdminUpload = () => {
         ...mapCategoriesToDB(webCategories, 'web'),
         ...mapCategoriesToDB(appCategories, 'app'),
       ];
+
+      if (isWeekly) {
+        setStatusMessage('Clearing previous weekly data for this date...');
+        await supabase.from('weekly_performance_metrics').delete().eq('upload_date', uploadDate);
+
+        // Add week_label to payload
+        const weeklyPayload = categoryPayload.map(c => ({
+           upload_date: c.upload_date,
+           week_label: weekLabel,
+           platform: c.platform,
+           category: c.category,
+           views: c.views,
+           cart_adds: c.cart_adds,
+           purchases: c.purchases,
+           fis_users: c.fis_users
+        }));
+
+        setStatusMessage('Pushing new Weekly Metrics...');
+        const { error: weeklyError } = await supabase
+          .from('weekly_performance_metrics')
+          .insert(weeklyPayload);
+        if (weeklyError) throw weeklyError;
+
+        setUploadStatus('success');
+        setStatusMessage('Weekly data successfully processed and uploaded!');
+        return;
+      }
 
       // 1. Delete existing data for this date to ensure we cleanly overwrite (no duplicates)
       setStatusMessage('Clearing previous data for this date...');
@@ -228,7 +261,13 @@ export const AdminUpload = () => {
           className={`tab-btn ${activeTab === 'engagement' ? 'active' : ''}`}
           onClick={() => { setActiveTab('engagement'); setUploadStatus(null); }}
         >
-          Engagement Data
+          Monthly/Engagement Data
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('weekly'); setUploadStatus(null); }}
+        >
+          Weekly Data
         </button>
         <button 
           className={`tab-btn ${activeTab === 'attributes' ? 'active' : ''}`}
@@ -242,7 +281,7 @@ export const AdminUpload = () => {
         <>
           <div className="admin-controls">
             <label className="date-label">
-              <strong>Select Period Date:</strong>
+              <strong>Select Period Date (Monthly):</strong>
               <input 
                 type="date" 
                 value={uploadDate} 
@@ -256,10 +295,47 @@ export const AdminUpload = () => {
             <UploadZone 
               files={files}
               onFileUpload={handleFileUpload}
-              onProcess={handleProcessAndPush}
+              onProcess={() => handleProcessAndPush(false)}
               isProcessing={uploadStatus === 'uploading'}
             />
             <p className="admin-note">Note: For Admin Uploads, only the "Current Period" files are processed. The Comparison Period is ignored.</p>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'weekly' && (
+        <>
+          <div className="admin-controls" style={{ display: 'flex', gap: '2rem' }}>
+            <label className="date-label">
+              <strong>Week Start Date:</strong>
+              <input 
+                type="date" 
+                value={uploadDate} 
+                onChange={(e) => setUploadDate(e.target.value)} 
+                className="date-input"
+              />
+            </label>
+            <label className="date-label">
+              <strong>Week Label:</strong>
+              <input 
+                type="text" 
+                value={weekLabel} 
+                onChange={(e) => setWeekLabel(e.target.value)} 
+                placeholder="e.g. 1-7th July"
+                className="date-input"
+                style={{ padding: '0.5rem', width: '200px' }}
+              />
+            </label>
+          </div>
+
+          <div className="upload-wrapper">
+            <UploadZone 
+              files={files}
+              onFileUpload={handleFileUpload}
+              onProcess={() => handleProcessAndPush(true)}
+              isProcessing={uploadStatus === 'uploading'}
+            />
+            <p className="admin-note">Upload the raw files for the week. The processor will aggregate them and push to the Weekly Trends Dashboard.</p>
           </div>
         </>
       )}

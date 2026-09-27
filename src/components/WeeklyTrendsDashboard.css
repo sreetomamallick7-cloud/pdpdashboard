@@ -1,0 +1,151 @@
+.weekly-trends-container {
+  padding: 2rem;
+  background-color: #f8fafc;
+  min-height: 100vh;
+  color: #1e293b;
+}
+
+.weekly-header {
+  margin-bottom: 2rem;
+}
+
+.weekly-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: #0f172a;
+}
+
+.filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.weekly-select {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: white;
+  color: #1e293b;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.weekly-loading {
+  text-align: center;
+  padding: 3rem;
+  color: #64748b;
+}
+
+.weekly-comparison-module {
+  display: flex;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.chart-section {
+  flex: 0 0 350px;
+  padding: 2rem 1.5rem 1rem 0;
+  border-right: 1px solid #f1f5f9;
+}
+
+.table-section {
+  flex: 1;
+  padding: 0;
+  background: white;
+  overflow-x: auto;
+}
+
+.weekly-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.weekly-table th {
+  padding: 1.5rem 1rem 1rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+
+.weekly-table td {
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid #f8fafc;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.weekly-table tr:last-child td {
+  border-bottom: none;
+}
+
+.week-col {
+  color: #5a55d2;
+  font-weight: 600;
+}
+
+.base-label {
+  color: #8b5cf6;
+  font-weight: normal;
+  margin-left: 0.25rem;
+}
+
+.metric-col {
+  color: #334155;
+}
+
+.font-medium {
+  font-weight: 600;
+}
+
+.wow-col {
+  min-width: 80px;
+}
+
+.wow-dash {
+  color: #cbd5e1;
+  padding-left: 1rem;
+}
+
+.wow-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.wow-badge.positive {
+  background-color: #d1fae5;
+  color: #059669;
+}
+
+.wow-badge.negative {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+@media (max-width: 1100px) {
+  .weekly-comparison-module {
+    flex-direction: column;
+  }
+  .chart-section {
+    flex: auto;
+    border-right: none;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 2rem 1rem 1rem 0;
+  }
+}
+.hover-bg:hover { background-color: #2f343f !important; }
